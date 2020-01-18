@@ -178,7 +178,7 @@ The directory to save is `durand-cat-profile-save-directory'."
   "The default image to use as the avatar of the profile.")
 
 ;;;###autoload
-(defvar durand-cat-avatar-padding (cons 0 1)
+(defvar durand-cat-avatar-padding (cons 0 2)
   "Padding before and after the avatar.")
 
 ;;;###autoload
@@ -296,9 +296,7 @@ FILE can be either a string or a list of strings."
      (when (> (length file) 1)
        (cl-loop for f in (cdr formated-files)
                 collect (propertize
-                         (concat
-                          (make-string (length file-desc-text) 32)
-                          f)
+                         (concat (make-string (length file-desc-text) 32) f)
                          'tag tag
                          'positivep positivep
                          'file file
@@ -654,10 +652,10 @@ are lists of activity informations."
     (user-error "No file or heading here"))
   (let ((pos (get-char-property (point) 'pos)))
     (find-file (get-char-property (point) 'file))
-    (when (and pos
-               (numberp pos)
-               (> pos 0))
-      (goto-char pos))))
+    (when (and pos (numberp pos) (> pos 0))
+      (goto-char pos)
+      (org-show-entry)
+      (recenter 0))))
 
 ;;;###autoload
 (defun durand-cat-every-item-quit ()
@@ -669,6 +667,109 @@ are lists of activity informations."
     (switch-to-buffer durand-cat-buffer-name))
    (t (user-error "No durand-cat buffer available!"))))
 
+;;;###autoload
+(defun durand-cat-back-to-group-begin ()
+  "Go back to the begin of an activity block."
+  (when (get-char-property (point) 'tag)
+    (goto-char (previous-single-property-change (point) 'tag))
+    (skip-syntax-forward " " (line-end-position))))
+
+;;;###autoload
+(defun durand-cat-down-activity ()
+  "Go to the activity group downward in the same positive or negative category."
+  (interactive)
+  (when (looking-at "Activity")
+    (forward-word))
+  (cond
+   ((get-char-property (point) 'block-num)
+    (let ((current-polarity (get-char-property (point) 'positivep)))
+      (unless (re-search-forward "Activity" nil t)
+        (goto-char (point-min))
+        (re-search-forward "Activity" nil t))
+      (unless (eq current-polarity (get-char-property (point) 'positivep))
+        (unless (re-search-forward "Activity" nil t)
+          (goto-char (point-min))
+          (re-search-forward "Activity" nil t))
+        (unless (eq current-polarity (get-char-property (point) 'positivep))
+          (re-search-forward "Activity" nil t)))))
+   (t
+    (unless (re-search-forward "Activity" nil t)
+      (goto-char (point-min))
+      (re-search-forward "Activity" nil t))))
+  (durand-cat-back-to-group-begin))
+
+;;;###autoload
+(defun durand-cat-up-activity ()
+  "Go to the activity group upward in the same positive or negative category."
+  (interactive)
+  (when (looking-back "Activity" (- (point) 8))
+    (forward-word -1))
+  (cond
+   ((get-char-property (point) 'block-num)
+    (let ((current-polarity (get-char-property (point) 'positivep)))
+      (unless (re-search-backward "Activity" nil t)
+        (goto-char (point-max))
+        (re-search-backward "Activity" nil t))
+      (unless (eq current-polarity (get-char-property (point) 'positivep))
+        (unless (re-search-backward "Activity" nil t)
+          (goto-char (point-max))
+          (re-search-backward "Activity" nil t))
+        (unless (eq current-polarity (get-char-property (point) 'positivep))
+          (re-search-backward "Activity" nil t)))))
+   (t
+    (unless (re-search-backward "Activity" nil t)
+      (goto-char (point-max))
+      (re-search-backward "Activity" nil t))))
+  (durand-cat-back-to-group-begin))
+
+;;;###autoload
+(defun durand-cat-next-activity ()
+  "Go to the next activity group."
+  (interactive)
+  (when (looking-at "Activity")
+    (forward-word))
+  (unless (re-search-forward "Activity" nil t)
+    (goto-char (point-min))
+    (re-search-forward "Activity" nil t))
+  (durand-cat-back-to-group-begin))
+
+;;;###autoload
+(defun durand-cat-previous-activity ()
+  "Go to the previous activity group."
+  (interactive)
+  (when (looking-back "Activity" (- (point) 8))
+    (forward-word -1))
+  (unless (re-search-backward "Activity" nil t)
+    (goto-char (point-max))
+    (re-search-backward "Activity" nil t))
+  (durand-cat-back-to-group-begin))
+
+;;;###autoload
+(defun durand-cat-left-activity ()
+  "Move to the activity on the left side.
+Since there are only two columns, this is the same as
+`durand-cat-right-activity'."
+  (interactive)
+  (when (looking-back "Activity" (- (point) 8))
+    (forward-word -1))
+  (unless (re-search-backward "Activity" (line-beginning-position) t)
+    (goto-char (line-end-position))
+    (re-search-backward "Activity" (line-beginning-position) t))
+  (durand-cat-back-to-group-begin))
+
+;;;###autoload
+(defun durand-cat-right-activity ()
+  "Move to the activity on the left side.
+Since there are only two columns, this is the same as
+`durand-cat-left-activity'."
+  (interactive)
+  (when (looking-at "Activity")
+    (forward-word))
+  (unless (re-search-forward "Activity" (line-end-position) t)
+    (goto-char (line-beginning-position))
+    (re-search-forward "Activity" (line-end-position) t))
+  (durand-cat-back-to-group-begin))
+
 ;;; Engines
 
 ;;;###autoload
@@ -676,9 +777,12 @@ are lists of activity informations."
   "Count each state change as having point 1.
 It is expected to be executed with point at a heading."
   (let ((limit (save-excursion (outline-next-heading) (point))))
-    (save-excursion
-      (cl-loop while (re-search-forward org-state-regexp limit t)
-               sum 1))))
+    (+ (save-excursion
+         (cl-loop while (re-search-forward org-state-regexp limit t)
+                  sum 1))
+       (save-excursion
+         (cl-loop while (re-search-forward org-close-note-regexp limit t)
+                  sum 1)))))
 
 ;;;###autoload
 (defvar durand-cat-default-running-rounds 6
@@ -808,8 +912,7 @@ In fact this just examines if the level is 4."
 ;;;###autoload
 (defun durand-cat-set-header ()
   "Set up the header line format according to `durand-cat-header-line-format'."
-  (setf header-line-format durand-cat-header-line-format)
-  (setq cursor-type nil))
+  (setf header-line-format durand-cat-header-line-format))
 
 ;;;###autoload
 (defun durand-cat-set-cursor ()
@@ -817,8 +920,10 @@ In fact this just examines if the level is 4."
   (setq cursor-type nil))
 
 (add-hook 'durand-cat-mode-hook 'durand-cat-set-header)
-(add-hook 'durand-cat-mode-hook 'durand-cat-set-cursor t)
+;; (add-hook 'durand-cat-mode-hook 'durand-cat-set-cursor t)
 (add-hook 'durand-cat-mode-hook 'durand-cat-toggle-details)
+(add-hook 'durand-cat-mode-hook 'durand-cat-next-activity)
+(add-hook 'durand-cat-mode-hook 'doom-modeline-set-minimal-modeline)
 
 ;; define profiles
 
