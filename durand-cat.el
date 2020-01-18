@@ -52,7 +52,21 @@
   tag
   file
   regex
+  ; HACK: This is not used. Its purpose is to distinguish positive activities
+  ; from negative ones, so that we can use an associative list to look up
+  ; activity information.
+  positivep
   (engine 'durand-cat-plus-one-engine))
+
+;; NOTE: We need to collect activity informations. An activity information
+;; consists of
+;; - file name
+;; - position
+;; - computed point
+
+;;;###autoload
+(cl-defstruct durand-cat-activity-information
+  file position point)
 
 ;;;###autoload
 (cl-defstruct durand-cat-profile
@@ -164,7 +178,7 @@ The directory to save is `durand-cat-profile-save-directory'."
   "The default image to use as the avatar of the profile.")
 
 ;;;###autoload
-(defvar durand-cat-avatar-padding (cons 3 1)
+(defvar durand-cat-avatar-padding (cons 0 1)
   "Padding before and after the avatar.")
 
 ;;;###autoload
@@ -199,7 +213,8 @@ The directory to save is `durand-cat-profile-save-directory'."
    "\"\\s-+from\\s-+\""
    "\\(\\sw\\|\\s_\\)+"
    "\"\\s-+\\("
-   org-element--timestamp-regexp
+      "\\[\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\} ?[^
+>]*?\\)\\]"
    "\\).*$")
   "The regexp for state changes in an org heading.")
 
@@ -246,6 +261,7 @@ FILE can be either a string or a list of strings."
          (file (durand-cat-activity-file activity))
          (regex (durand-cat-activity-regex activity))
          (engine (durand-cat-activity-engine activity))
+         (positivep (durand-cat-activity-positivep activity))
          (formated-files (durand-cat-format-file file))
          (file-pluralp (cond ((and (listp file)
                                    (> (length file) 1))
@@ -262,18 +278,18 @@ FILE can be either a string or a list of strings."
         (when point
           (propertize
            (format ": %d" point)
-           'face 'success))
-        "\n")
+           'face 'success)))
        'tag tag
+       'positivep positivep
        'file file
        'regex regex
        'engine engine)
       (propertize
        (concat
         file-desc-text
-        (car formated-files)
-        "\n")
+        (car formated-files))
        'tag tag
+       'positivep positivep
        'file file
        'regex regex
        'engine engine))
@@ -284,6 +300,7 @@ FILE can be either a string or a list of strings."
                           (make-string (length file-desc-text) 32)
                           f)
                          'tag tag
+                         'positivep positivep
                          'file file
                          'regex regex
                          'engine engine)))
@@ -295,8 +312,9 @@ FILE can be either a string or a list of strings."
                      ((stringp regex) regex)
                      ((functionp regex) (pp-to-string regex)))
                     'face '(:foreground "IndianRed1"))
-        ":\n\n")
+        ":")
        'tag tag
+       'positivep positivep
        'file file
        'regex regex
        'engine engine)))))
@@ -315,6 +333,71 @@ FILE can be either a string or a list of strings."
 ;;;###autoload
 (defvar durand-cat-header-line-format nil
   "The header format that should be used by `durand-cat-mode'.")
+
+;;;###autoload
+(defvar durand-cat-total-information nil
+  "An associative list for looking up activity information.")
+
+;;;###autoload
+(defun durand-cat-associative-listification (a-list &optional key value)
+  "Return an associative list version of A-LIST by KEY and VALUE.
+KEY defaults to `car', and VALUE defaults to `cdr'."
+  (let ((key (or key 'car))
+        (value (or value 'cdr)))
+    (cl-loop for element in a-list
+             collect (cons (funcall key element)
+                           (funcall value element)))))
+
+;;;###autoload
+(defun durand-cat-gather-data-together (list-of-activities)
+  "Gather all needed information for LIST-OF-ACTIVITIES in one go.
+Returns an alist whose keys are the activitites and whose values
+are lists of activity informations."
+  (let (file-combined information)
+    (cl-loop for activity in list-of-activities
+             for file = (durand-cat-activity-file activity)
+             do (cond
+                 ((stringp file)
+                  (setf (alist-get file file-combined nil nil 'string=)
+                        (append (alist-get file file-combined nil nil 'string=)
+                                (list activity))))
+                 ((listp file)
+                  (cl-loop for file-name in file
+                           do (setf (alist-get file-name file-combined nil nil 'string=)
+                                    (append
+                                     (alist-get file-name file-combined nil nil 'string=)
+                                     (list activity)))))
+                 (t
+                  (user-error "FILE should be either a string or a list of strings, but got %s, of type %s"
+                              (pp-to-string file)
+                              (type-of file)))))
+    (cl-loop for spec in file-combined
+             for file = (car spec)
+             for activities = (cdr spec)
+             do (with-current-file (expand-file-name file org-directory) nil
+                  (save-excursion
+                    (goto-char (point-min))
+                    (while (re-search-forward org-heading-regexp nil t)
+                      (cl-loop for act in activities
+                               for regex = (durand-cat-activity-regex act)
+                               for engine = (durand-cat-activity-engine act)
+                               do (when (cond
+                                         ((stringp regex)
+                                          (cl-member regex (org-get-tags) :test 'string=))
+                                         ((functionp regex)
+                                          (funcall regex))
+                                         (t (user-error "Regex %s is not a string nor a function, but a %s"
+                                                        (pp-to-string regex)
+                                                        (type-of regex))))
+                                    (setf (alist-get act information nil nil 'equal)
+                                          (append
+                                           (alist-get act information nil nil 'equal)
+                                           (list
+                                            (make-durand-cat-activity-information
+                                             :file file
+                                             :position (point)
+                                             :point (funcall engine)))))))))))
+    information))
 
 ;;;###autoload
 (defun durand-cat-profile-display-dashboard (profile)
@@ -341,156 +424,118 @@ FILE can be either a string or a list of strings."
           (goto-char original-point)
           (insert (make-string (/ (- (window-body-width) durand-cat-width) 2) 32)))
         (insert (make-string (cdr durand-cat-avatar-padding) 10)))
-      (let ((pos-ls (durand-cat-profile-positive-list profile))
-            (neg-ls (durand-cat-profile-negative-list profile))
-            (pos-total 0)
-            (neg-total 0)
-            temp
-            pos-activity-point-list neg-activity-point-list)
-        ;; positive list
-        (cl-loop
-         for pos in pos-ls
-         for pos-file = (durand-cat-activity-file pos)
-         for pos-engine = (durand-cat-activity-engine pos)
-         for pos-regex = (durand-cat-activity-regex pos)
-         do (cond
-             ((stringp pos-file)
-              (setf temp
-                    (with-current-file (expand-file-name pos-file org-directory) nil
-                      (cond
-                       ((stringp pos-regex)
-                        (apply '+ (org-map-entries pos-engine pos-regex)))
-                       ((functionp pos-regex)
-                        (apply '+ (cl-remove-if
-                                   'null
-                                   (org-map-entries
-                                    (lambda ()
-                                      (when (funcall pos-regex)
-                                        (funcall pos-engine)))))))))))
-             ((listp pos-file)
-              (setf temp
-                    (cl-loop for file in pos-file
-                             sum (with-current-file (expand-file-name file org-directory) nil
-                                   (cond
-                                    ((stringp pos-regex)
-                                     (apply '+ (org-map-entries pos-engine pos-regex)))
-                                    ((functionp pos-regex)
-                                     (apply '+ (cl-remove-if
-                                                'null
-                                                (org-map-entries
-                                                 (lambda ()
-                                                   (when (funcall pos-regex)
-                                                     (funcall pos-engine))))))))))))
-             (t
-              (user-error "Unknown file type: %s, which is of type: %s"
-                          (pp-to-string pos-file)
-                          (type-of pos-file))))
-         do (cl-incf pos-total temp)
-         do (setf pos-activity-point-list
-                  (append
-                   pos-activity-point-list
-                   (list temp))))
-        ;; negative list
-        (cl-loop
-         for neg in neg-ls
-         for neg-file = (durand-cat-activity-file neg)
-         for neg-engine = (durand-cat-activity-engine neg)
-         for neg-regex = (durand-cat-activity-regex neg)
-         do (cond
-             ((stringp neg-file)
-              (setf temp
-                    (with-current-file (expand-file-name neg-file org-directory) nil
-                      (cond
-                       ((stringp neg-regex)
-                        (apply '+ (org-map-entries neg-engine neg-regex)))
-                       ((functionp neg-regex)
-                        (apply '+ (cl-remove-if
-                                   'null
-                                   (org-map-entries
-                                    (lambda ()
-                                      (when (funcall neg-regex)
-                                        (funcall neg-engine)))))))))))
-             ((listp neg-file)
-              (setf temp
-                    (cl-loop for file in neg-file
-                             sum (with-current-file (expand-file-name file org-directory) nil
-                                   (cond
-                                    ((stringp neg-regex)
-                                     (apply '+ (org-map-entries neg-engine neg-regex)))
-                                    ((functionp neg-regex)
-                                     (apply '+ (cl-remove-if
-                                                'null
-                                                (org-map-entries
-                                                 (lambda ()
-                                                   (when (funcall neg-regex)
-                                                     (funcall neg-engine))))))))))))
-             (t
-              (user-error "Unknown file type: %s, which is of type: %s"
-                          (pp-to-string neg-file)
-                          (type-of neg-file))))
-         do (cl-incf neg-total temp)
-         do (setf neg-activity-point-list
-                  (append
-                   neg-activity-point-list
-                   (list temp))))
+      (let* ((pos-ls (durand-cat-profile-positive-list profile))
+             (neg-ls (durand-cat-profile-negative-list profile))
+             (pos-information (durand-cat-gather-data-together pos-ls))
+             (neg-information (durand-cat-gather-data-together neg-ls))
+             (total-information (append pos-information neg-information))
+             (pos-total (cl-loop for information in pos-information
+                                 sum (cl-loop for act-info in (cdr information)
+                                              sum (durand-cat-activity-information-point act-info))))
+             (neg-total (cl-loop for information in neg-information
+                                 sum (cl-loop for act-info in (cdr information)
+                                              sum (durand-cat-activity-information-point act-info))))
+             (pos-activity-point-list
+              (cl-loop for spec in pos-information
+                       collect
+                       (cons (car spec)
+                             (cl-loop for inf in (cdr spec)
+                                      sum (durand-cat-activity-information-point inf)))))
+             (neg-activity-point-list
+              (cl-loop for spec in neg-information
+                       collect
+                       (cons (car spec)
+                             (cl-loop for inf in (cdr spec)
+                                      sum (durand-cat-activity-information-point inf))))))
+        ;; set up information look up alist.
+        (setf durand-cat-total-information total-information)
         ;; insert pos and neg
         (let (display-list pos-display-list neg-display-list)
-          (push (format "Positive: %s\n"
+          (push (format "Total Points: %s\n"
                         (propertize
-                         (number-to-string pos-total)
+                         (number-to-string (- pos-total neg-total))
                          'face 'success))
+                display-list)
+          (push (list
+                 (format "Positive: %s"
+                         (propertize
+                          (number-to-string pos-total)
+                          'face 'success)))
                 pos-display-list)
-          (push (format "Negative: %s\n"
-                        (propertize
-                         (number-to-string neg-total)
-                         'face 'success))
+          (push (list
+                 (format "Negative: %s"
+                         (propertize
+                          (number-to-string neg-total)
+                          'face 'success)))
                 neg-display-list)
-          (cl-loop for pos in pos-ls
-                   do (setf pos-display-list
-                            (append
-                             pos-display-list
-                             (durand-cat-format-activity pos (pop pos-activity-point-list))
-                             (list "\n"))))
-          (cl-loop for neg in neg-ls
-                   do (setf neg-display-list
-                            (append
-                             neg-display-list
-                             (durand-cat-format-activity neg (pop neg-activity-point-list))
-                             (list "\n"))))
-          ;; Zip the two lists. First make sure they have the same lengths.
+          (setf pos-display-list
+                (append
+                 pos-display-list
+                 (cl-loop for pos in pos-ls
+                          collect (durand-cat-format-activity
+                                   pos
+                                   (alist-get pos pos-activity-point-list nil nil 'equal))))
+                neg-display-list
+                (append
+                 neg-display-list
+                 (cl-loop for neg in neg-ls
+                          collect (durand-cat-format-activity
+                                   neg
+                                   (alist-get neg neg-activity-point-list nil nil 'equal)))))
+          ;; NOTE: Zip the two lists. First make sure they have the same lengths.
           (let ((max-length (max (length pos-display-list)
                                  (length neg-display-list))))
             (cond ((< (length pos-display-list) max-length)
                    (setf pos-display-list
                          (append pos-display-list
                                  (make-list (- max-length (length pos-display-list))
-                                            ""))))
+                                            (list "")))))
                   ((< (length neg-display-list) max-length)
                    (setf neg-display-list
                          (append neg-display-list
                                  (make-list (- max-length (length neg-display-list))
-                                            "\n"))))))
+                                            (list "")))))))
           ;; Then zip
-          (let ((max-line-length (apply 'max
-                                        (cl-loop
-                                         for str in pos-display-list
-                                         collect (length str)))))
+          (let ((max-line-length (cl-loop
+                                  for ls-str in pos-display-list
+                                  maximize (cl-loop for str in ls-str
+                                                    maximize (length str)))))
             (cl-loop
              for i from 0 to (- (length pos-display-list) 1)
+             for ith-pos = (nth i pos-display-list)
+             for ith-neg = (nth i neg-display-list)
+             for max-block-len = (max (length ith-pos) (length ith-neg))
+             ;; NOTE: Make each block have the same length
+             do (cond ((< (length ith-pos) max-block-len)
+                       (setf ith-pos
+                             (append ith-pos
+                                     (make-list (- max-block-len (length ith-pos)) ""))))
+                      ((< (length ith-neg) max-block-len)
+                       (setf ith-neg
+                             (append ith-neg
+                                     (make-list (- max-block-len (length ith-neg)) "")))))
              do (setf display-list
-                      (append display-list
-                              (list
-                               (concat (durand-cat-strip-new-line
-                                        (nth i pos-display-list))
-                                       (make-string
-                                        (+ durand-cat-center-gap
-                                           (- max-line-length (length (nth i pos-display-list))))
-                                        32)
-                                       (nth i neg-display-list)))))))
-          (cl-loop for str in (durand-cat-align-first-line
-                               (window-body-width)
-                               display-list)
-                   do (insert str))))))
+                      (append
+                       display-list
+                       (cl-loop for j from 0 to (- max-block-len 1)
+                                for to-add = (concat
+                                              (nth j ith-pos)
+                                              (make-string
+                                               (+ durand-cat-center-gap
+                                                  (- max-line-length (length (nth j ith-pos))))
+                                               32)
+                                              (nth j ith-neg)
+                                              "\n")
+                                collect (propertize to-add
+                                                    'block-num i))
+                       (list "\n")))))
+          (cl-loop for str in (append
+                               (list (durand-cat-center (window-body-width) (car display-list)))
+                               (durand-cat-align-first-line
+                                (window-body-width)
+                                (cdr display-list)))
+                   do (insert str))))
+      (goto-char (point-min))))
   ;; switch to it instead of displaying it.
   (switch-to-buffer durand-cat-buffer-name)
   ;; set header format
@@ -500,29 +545,129 @@ FILE can be either a string or a list of strings."
                                         (durand-cat-profile-name profile))
                                        'face '(:foreground "gold" :height 300)))
   ;; a dedicated major mode
-  (durand-cat-mode)
-  (durand-cat-set-cursor))
+  (durand-cat-mode))
 
 ;;;###autoload
 (defun durand-cat-toggle-details ()
   "Hide or show the details about files and regexps."
   (interactive)
-  (let ((inhibit-read-only t))
+  (let ((inhibit-read-only t)
+        (current-block-num 1)
+        at-the-end block-start block-end)
     (save-excursion
       (goto-char (point-min))
-      (while (re-search-forward "in file" nil t)
-        (cond ((null (get-char-property (point) 'display))
-               (add-text-properties (line-beginning-position)
-                                    (progn
-                                      (re-search-forward "\n\\s-*\n" nil t)
-                                      (- (point) 1))
+      (while (null at-the-end)
+        (while (and
+                (or (null (get-char-property (point) 'block-num))
+                    (< (get-char-property (point) 'block-num) current-block-num))
+                (/= (point) (point-max)))
+          (forward-char 1))
+        (when (= (point) (point-max))
+          (setf at-the-end t))
+        (cl-incf current-block-num)
+        (setf block-start (line-beginning-position 2)
+              block-end
+              (progn
+                (while (and
+                        (or (null (get-char-property (point) 'block-num))
+                            (< (get-char-property (point) 'block-num) current-block-num))
+                        (/= (point) (point-max)))
+                  (forward-char))
+                (- (line-beginning-position) 1)))
+        (cond ((null (get-char-property block-start 'display))
+               (add-text-properties block-start block-end
                                     '(display "")))
               (t
-               (add-text-properties (line-beginning-position)
-                                    (progn
-                                      (re-search-forward "\n\\s-*\n" nil t)
-                                      (- (point) 1))
+               (add-text-properties block-start block-end
                                     '(display nil))))))))
+
+;;;###autoload
+(defun durand-cat-show-every-item ()
+  "Show every heading associated to the activity."
+  (interactive)
+  (unless (get-char-property (point) 'tag)
+    (user-error "No activity associated to the point"))
+  (let* ((tag (get-char-property (point) 'tag))
+         (file (get-char-property (point) 'file))
+         (regex (get-char-property (point) 'regex))
+         (engine (get-char-property (point) 'engine))
+         (positivep (get-char-property (point) 'positivep))
+         (associated-act (make-durand-cat-activity
+                          :tag tag
+                          :file file
+                          :regex regex
+                          :positivep positivep
+                          :engine engine))
+         (associated-info (alist-get associated-act durand-cat-total-information
+                                     nil nil 'equal))
+         file-combined)
+    (cl-loop
+     for info in associated-info
+     for file = (durand-cat-activity-information-file info)
+     do (setf (alist-get file file-combined nil nil 'string=)
+              (append (alist-get file file-combined nil nil 'string=)
+                      (list (list (durand-cat-activity-information-position info)
+                                  (durand-cat-activity-information-point info))))))
+    (with-current-buffer-window
+     "*durand-cat-every-item*" nil nil
+     (erase-buffer)
+     (goto-char (point-min))
+     (insert (format "Below are all headings for the activity «%s»\n"
+                     (propertize tag 'face '(:foreground "orange"))))
+     (cl-loop for spec in file-combined
+              for headings = (with-current-file (expand-file-name (car spec) org-directory) nil
+                               (cl-loop for pos-and-point in (cdr spec)
+                                        collect (progn
+                                                  (goto-char (car pos-and-point))
+                                                  (list
+                                                   (buffer-substring
+                                                    (line-beginning-position)
+                                                    (car pos-and-point))
+                                                   (line-beginning-position)
+                                                   (cadr pos-and-point)))))
+              do (progn
+                   (insert (propertize
+                            (format "File: %s\n" (car spec))
+                            'file (expand-file-name (car spec) org-directory)))
+                   (cl-loop for heading in headings
+                            do (insert (format "%d points:\n" (caddr heading)))
+                            do (insert (propertize
+                                        (car heading)
+                                        'file (expand-file-name (car spec) org-directory)
+                                        'pos (cadr heading))
+                                       "\n"))
+                   (insert "\n")))
+     (durand-cat-every-item-mode))))
+
+;;; major mode for every item
+
+;;;###autoload
+(define-derived-mode durand-cat-every-item-mode special-mode "Every heading"
+  "For jumping directly to the found heading.")
+
+;;;###autoload
+(defun durand-cat-every-item-jump ()
+  "Jump to the corresponding heading or file."
+  (interactive)
+  (unless (and (get-char-property (point) 'file)
+               (stringp (get-char-property (point) 'file)))
+    (user-error "No file or heading here"))
+  (let ((pos (get-char-property (point) 'pos)))
+    (find-file (get-char-property (point) 'file))
+    (when (and pos
+               (numberp pos)
+               (> pos 0))
+      (goto-char pos))))
+
+;;;###autoload
+(defun durand-cat-every-item-quit ()
+  "Kill the every-item buffer and go to durand-cat buffer."
+  (interactive)
+  (kill-current-buffer)
+  (cond
+   ((get-buffer durand-cat-buffer-name)
+    (switch-to-buffer durand-cat-buffer-name))
+   (t (user-error "No durand-cat buffer available!"))))
 
 ;;; Engines
 
@@ -633,6 +778,22 @@ This returns the largest integer such that after so many UNITs the time passes t
                  finally return counter)))))
 
 ;;;###autoload
+(defun durand-cat-schedule-delay-engine ()
+  "Count the days between the scheduled day and today.
+If it starts today, then it is counted as one day."
+  (unless (save-excursion
+            (goto-char (line-beginning-position))
+            (looking-at org-heading-regexp))
+    (user-error "Executed not at the beginning of an org heading"))
+  (let* ((scheduled-time (org-entry-get (point) "SCHEDULED"))
+         (subtracted-days (-
+                           (time-to-days (current-time))
+                           (time-to-days
+                            (apply 'encode-time
+                                   (-take 6 (org-parse-time-string scheduled-time)))))))
+    (max 0 (+ subtracted-days 1))))
+
+;;;###autoload
 (defun durand-cat-account-predicate ()
   "Determine if this entry is a valid account.
 In fact this just examines if the level is 4."
@@ -683,7 +844,9 @@ not recommended to set unless you know what you are doing."
                   :positive-list (cl-loop
                                   for raw in positive-list
                                   collect (apply 'make-durand-cat-activity
-                                                 raw))
+                                                 (append
+                                                  raw
+                                                  (list :positivep t))))
                   :negative-list (cl-loop
                                   for raw in negative-list
                                   collect (apply 'make-durand-cat-activity
@@ -712,7 +875,19 @@ not recommended to set unless you know what you are doing."
                            :tag "reading"
                            :file "notes.org"
                            :regex "lire"
-                           :engine durand-cat-time-span-engine)))
+                           :engine (lambda () (durand-cat-time-span-engine 'hour))))
+                        :negative-list
+                        '((
+                           :tag "YouTube"
+                           :file ("notes.org"
+                                  "notes.org_archive")
+                           :regex "youtube"
+                           :engine durand-cat-time-span-engine)
+                          (
+                           :tag "No job"
+                           :file "aujourdhui.org"
+                           :regex "no_job"
+                           :engine durand-cat-schedule-delay-engine)))
 
 ;;* account section
 
