@@ -6,7 +6,7 @@
 * Table of Contents :TOC_3:noexport:
 - [[#description][Description]]
 - [[#prerequisites][Prerequisites]]
-- [[#features][Features]]
+- [[#profiles][Profiles]]
 - [[#configuration][Configuration]]
 - [[#troubleshooting][Troubleshooting]]
 
@@ -14,18 +14,95 @@
 This package provides a cute cat that grows up when you do something positive, and vice
 versa.
 
-+ If possible, include a brief list of feature highlights here
-+ Like code completion, syntax checking or available snippets
-+ Include links to packages & external things where possible
+Here is a [[img:screen-shot.png][screen shot]] of the package in action.
 
-* Prerequisites
-This module has no prereqisites.
+ + One can define arbitraty activities to calculate positive or negative points.
+   + Each activity consists of
+     - a tag, the printed name
+     - a file or files, which indicate where to collect the information
+     - a regex, which can be either a string or a function, to determine if a
+       heading is for the activity
+     - an engine, which is a function executed with point on a heading, to
+       calculate how many points the heading has, for the activity in question.
+ + And one can define multiple profiles. Each profile should consist of
+     - a name
+     - an avatar (the default is a cute cat)
+     - a list of *positive* activities
+     - a list of *negative* activities
+ + A more detailed explanation for defining profiles is included below.
 
-* Features
-An in-depth list of features, how to use them, and their dependencies.
+* Installation
+  It is not on melpa. To install it, use straight.el or, if a doom user, include
+  the following in the =package.el=.
+
+  #+begin_src elisp
+(package! durand-cat :recipe (:host github :repo "JSDurand/durand-cat"))
+  #+end_src
 
 * Configuration
-How to configure this module, including common problems and how to address them.
+
+** DOOM
+  Below is a default configuration for doom users.
+
+  The keybinding is not going to work for others, so please replace it with some
+  keybinding you like.
+
+  #+begin_src elisp
+ (use-package! durand-cat
+  :commands (durand-cat-profile-display-dashboard)
+  :bind (:map durand-view-map
+          ([?c] . durand-cat-profile-display-dashboard))
+  :config
+  (map! :map durand-cat-mode-map
+        :n [?\(] 'durand-cat-toggle-details
+        :n [?s] 'durand-cat-switch-profile
+        :n [?q] 'kill-current-buffer
+        :n [tab] 'durand-cat-show-every-item
+        :map durand-cat-every-item-mode-map
+        :n [tab] 'durand-cat-every-item-jump
+        :n [?q] 'durand-cat-every-item-quit)
+  (define-key! durand-cat-mode-map
+    [left-margin mouse-1] #'ignore
+    [remap forward-button] #'durand-cat-next-activity
+    [remap backward-button] #'durand-cat-previous-activity
+    "n" #'durand-cat-down-activity
+    "p" #'durand-cat-up-activity
+    "C-n" #'durand-cat-down-activity
+    "C-p" #'durand-cat-up-activity
+    [down] #'durand-cat-down-activity
+    [up] #'durand-cat-up-activity
+    [left] 'durand-cat-left-activity
+    [right] 'durand-cat-right-activity
+
+    ;; Evil remaps
+    [remap evil-next-line] #'durand-cat-down-activity
+    [remap evil-previous-line] #'durand-cat-up-activity
+    [remap evil-next-visual-line] #'durand-cat-down-activity
+    [remap evil-previous-visual-line] #'durand-cat-up-activity
+    [remap evil-forward-char] #'durand-cat-right-activity
+    [remap evil-backward-char] #'durand-cat-left-activity
+    [remap evil-paste-pop-next] #'durand-cat-down-activity
+    [remap evil-paste-pop] #'durand-cat-up-activity
+    [remap evil-delete] #'ignore
+    [remap evil-delete-line] #'ignore
+    [remap evil-insert] #'ignore
+    [remap evil-append] #'ignore
+    [remap evil-replace] #'ignore
+    [remap evil-replace-state] #'ignore
+    [remap evil-change] #'ignore
+    [remap evil-change-line] #'ignore
+    [remap evil-visual-char] #'ignore
+    [remap evil-visual-line] #'ignore))
+
+  #+end_src
+
+
+** Vanilla
+
+   TODO
+
+* Profiles
+  TODO
 
 * Troubleshooting
 Common issues and their solution, or places to look for help.
