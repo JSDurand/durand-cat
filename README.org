@@ -3,13 +3,6 @@
 #+SINCE:   v0.0.1
 #+STARTUP: inlineimages fold
 
-* Table of Contents :TOC_3:noexport:
-- [[#description][Description]]
-- [[#prerequisites][Prerequisites]]
-- [[#profiles][Profiles]]
-- [[#configuration][Configuration]]
-- [[#troubleshooting][Troubleshooting]]
-
 * Description
 This package provides a cute cat that grows up when you do something positive, and vice
 versa.
@@ -44,8 +37,8 @@ Here is a [[img:screen-shot.png][screen shot]] of the package in action.
 ** DOOM
   Below is a default configuration for doom users.
 
-  The keybinding is not going to work for others, so please replace it with some
-  keybinding you like.
+  The =durand-view-map= is my custom key-map, so please replace it with other
+  preferable key-bindings.
 
   #+begin_src elisp
  (use-package! durand-cat
@@ -99,10 +92,133 @@ Here is a [[img:screen-shot.png][screen shot]] of the package in action.
 
 ** Vanilla
 
-   TODO
+   Below is a default configuration for vanilla emacs users.
+
+   Note that this is untested. If any problems occur, feel free to report them
+   on GitHub.
+
+   #+begin_src elisp
+(use-package durand-cat
+  :commands (durand-cat-profile-display-dashboard)
+  :bind (:map durand-view-map
+          ([?c] . durand-cat-profile-display-dashboard))
+  :config
+  (define-key durand-cat-mode-map [?\(] 'durand-cat-toggle-details)
+  (define-key durand-cat-mode-map [?s] 'durand-cat-switch-profile)
+  (define-key durand-cat-mode-map [?q] 'kill-current-buffer)
+  (define-key durand-cat-mode-map [tab] 'durand-cat-show-every-item)
+  (define-key durand-cat-every-item-mode-map [tab] 'durand-cat-every-item-jump)
+  (define-key durand-cat-every-item-mode-map [?q] 'durand-cat-every-item-quit)
+
+  (define-key durand-cat-mode-map [left-margin mouse-1] #'ignore)
+  (define-key durand-cat-mode-map [remap forward-button] #'durand-cat-next-activity)
+  (define-key durand-cat-mode-map [remap backward-button] #'durand-cat-previous-activity)
+  (define-key durand-cat-mode-map [?n] #'durand-cat-down-activity)
+  (define-key durand-cat-mode-map [?p] #'durand-cat-up-activity)
+  (define-key durand-cat-mode-map [?\C-n] #'durand-cat-down-activity)
+  (define-key durand-cat-mode-map [?\C-p] #'durand-cat-up-activity)
+  (define-key durand-cat-mode-map [down] #'durand-cat-down-activity)
+  (define-key durand-cat-mode-map [up] #'durand-cat-up-activity)
+  (define-key durand-cat-mode-map [left] 'durand-cat-left-activity)
+  (define-key durand-cat-mode-map [right] 'durand-cat-right-activity)
+  (define-key durand-cat-mode-map [remap evil-next-line] #'durand-cat-down-activity)
+  (define-key durand-cat-mode-map [remap evil-previous-line] #'durand-cat-up-activity)
+  (define-key durand-cat-mode-map [remap evil-next-visual-line] #'durand-cat-down-activity)
+  (define-key durand-cat-mode-map [remap evil-previous-visual-line] #'durand-cat-up-activity)
+  (define-key durand-cat-mode-map [remap evil-forward-char] #'durand-cat-right-activity)
+  (define-key durand-cat-mode-map [remap evil-backward-char] #'durand-cat-left-activity)
+  (define-key durand-cat-mode-map [remap evil-paste-pop-next] #'durand-cat-down-activity)
+  (define-key durand-cat-mode-map [remap evil-paste-pop] #'durand-cat-up-activity)
+  (define-key durand-cat-mode-map [remap evil-delete] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-delete-line] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-insert] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-append] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-replace] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-replace-state] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-change] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-change-line] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-visual-char] #'ignore)
+  (define-key durand-cat-mode-map [remap evil-visual-line] #'ignore))
+
+   #+end_src
+
 
 * Profiles
-  TODO
+  But after the installation there is nothing to show yet, since the cute cate
+  does not know where to look for information or how to calculate the points.
+  That is to say, there are no profiles for the cute cat yet.
+  Below are two example profiles.
+  #+begin_src elisp
+(durand-cat-def-profile "main"
+                        :positive-list
+                        '((
+                           :tag "running"
+                           :file ("aujourdhui.org"
+                                  "aujourdhui.org_archive"
+                                  "agenda.org")
+                           :regex "run")
+                          (
+                           :tag "clean the house"
+                           :file "agenda.org"
+                           :regex "clean_house")
+                          (
+                           :tag "reading"
+                           :file "notes.org"
+                           :regex "lire"
+                           :engine (lambda () (durand-cat-time-span-engine 'hour))))
+                        :negative-list
+                        '((
+                           :tag "YouTube"
+                           :file ("notes.org"
+                                  "notes.org_archive")
+                           :regex "youtube"
+                           :engine durand-cat-time-span-engine)
+                          (
+                           :tag "No job"
+                           :file "aujourdhui.org"
+                           :regex "no_job"
+                           :engine durand-cat-schedule-delay-engine)))
+
+(durand-cat-def-profile "account"
+                        :positive-list nil
+                        :negative-list
+                        '((
+                           :tag "costs"
+                           :file "account/account.org"
+                           :regex durand-cat-account-predicate
+                           :engine durand-cat-account-engine-neg)))
+  #+end_src
+
+  Besides the example, there are some notes.
+
+  + A profile needs a name, a list of positive and negative activities.
+  + An activity needs a tag, a regex, a file, and an engine to be set.
+    - The tag is the printed name of the activity.
+    - The regex can be a string, matching a tag of an org-mode headline.
+      Currently a string means *one* tag only. But in the future this will be
+      changed to the behaviour of =org-map-entries=, where the string can
+      specify multiple tags.
+    - The regex can also be a function, which will be executed on a headline to
+      determine if that headline matches for this activity.
+  + A file can be a string or a list of strings.
+    - Currently all file names are expanded under =org-directory=. In the future
+      there will be a variable controlling the directory to expand under.
+  + An engine is a function to be executed on a headline to calculate the points
+    corresponding to this activity. The points should in principle be positive,
+    since there is already a negative category. But it is not restricted in the
+    codes.
+  + There are some engines provided by default.
+    - An engine =durand-cat-plus-one-engine=, which counts each state change of
+      the headline as having point 1.
+    - An engine =durand-cat-time-span-engine=, which counts the clocked time for
+      the headline. The default unit is minute.
+    - An engine =durand-cat-schedule-delay-engine=, which counts the number of
+      days since the scheduled date. If the headline is not scheduled then the
+      point is 0.
 
 * Troubleshooting
-Common issues and their solution, or places to look for help.
+  - This package is not using the customization system yet, since it is
+    currently for my personal uses. If the use arises, just inform me, and I
+    will try to adapt to the customization system.
+  - The faces are hard-coded at present. I will try to fix that when I have more
+    free time in the future.

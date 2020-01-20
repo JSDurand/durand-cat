@@ -643,7 +643,7 @@ are lists of activity informations."
 ;;; major mode for every item
 
 ;;;###autoload
-(define-derived-mode durand-cat-every-item-mode special-mode "Every heading"
+(define-derived-mode durand-cat-every-item-mode org-mode "Every heading"
   "For jumping directly to the found heading.")
 
 ;;;###autoload
