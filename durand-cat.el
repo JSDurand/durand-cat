@@ -20,11 +20,11 @@
 
 ;; to make compiler happy
 
-(declare-function with-current-file
-                  (expand-file-name
-                   "modules/lang/durand-org/autoload.el"
-                   doom-private-dir)
-                  (FILE-NAME &optional BUFFER-NAME &rest FORM) t)
+;; (declare-function with-current-file
+;;                   (expand-file-name
+;;                    "modules/lang/durand-org/autoload.el"
+;;                    doom-private-dir)
+;;                   (FILE-NAME &optional BUFFER-NAME &rest FORM) t)
 
 (declare-function durand-collect-shop-infos
                   (expand-file-name
@@ -146,25 +146,25 @@ The end result is that the first line is at the center."
   "The directory for saving profiles.")
 
 ;;;###autoload
-(defun durand-cat-save-profile (profile)
-  "Save PROFILE in a file.
-The directory to save is `durand-cat-profile-save-directory'."
-  (durand-cat-warn-profile profile)
-  (let* ((name (durand-cat-profile-name profile))
-         (file-name (expand-file-name name durand-cat-profile-save-directory))
-         (data (list
-                :name (durand-cat-profile-name profile)
-                :total-point (durand-cat-profile-total-point profile)
-                :avatar (durand-cat-profile-avatar profile)
-                :positive-list (durand-cat-profile-positive-list profile)
-                :negative-list (durand-cat-profile-negative-list profile))))
-    (when (file-exists-p file-name)
-      (with-current-file file-name nil
-        (erase-buffer)
-        (ignore-errors (save-buffer 0))))
-    (write-region (pp-to-string data) nil
-                  (expand-file-name name durand-cat-profile-save-directory)
-                  0)))
+;; (defun durand-cat-save-profile (profile)
+;;   "Save PROFILE in a file.
+;; The directory to save is `durand-cat-profile-save-directory'."
+;;   (durand-cat-warn-profile profile)
+;;   (let* ((name (durand-cat-profile-name profile))
+;;          (file-name (expand-file-name name durand-cat-profile-save-directory))
+;;          (data (list
+;;                 :name (durand-cat-profile-name profile)
+;;                 :total-point (durand-cat-profile-total-point profile)
+;;                 :avatar (durand-cat-profile-avatar profile)
+;;                 :positive-list (durand-cat-profile-positive-list profile)
+;;                 :negative-list (durand-cat-profile-negative-list profile))))
+;;     (when (file-exists-p file-name)
+;;       (with-current-file file-name nil
+;;         (erase-buffer)
+;;         (ignore-errors (save-buffer 0))))
+;;     (write-region (pp-to-string data) nil
+;;                   (expand-file-name name durand-cat-profile-save-directory)
+;;                   0)))
 
 ;;; Display
 
@@ -372,7 +372,9 @@ are lists of activity informations."
     (cl-loop for spec in file-combined
              for file = (car spec)
              for activities = (cdr spec)
-             do (with-current-file (expand-file-name file org-directory) nil
+             do (with-temp-buffer
+                  (insert-file-contents (expand-file-name file org-directory))
+                  (org-mode)
                   (save-excursion
                     (goto-char (point-min))
                     (while (re-search-forward org-heading-regexp nil t)
@@ -613,7 +615,8 @@ are lists of activity informations."
      (insert (format "Below are all headings for the activity «%s»\n"
                      (propertize tag 'face '(:foreground "orange"))))
      (cl-loop for spec in file-combined
-              for headings = (with-current-file (expand-file-name (car spec) org-directory) nil
+              for headings = (with-temp-buffer
+                               (insert-file-contents (expand-file-name (car spec) org-directory))
                                (cl-loop for pos-and-point in (cdr spec)
                                         collect (progn
                                                   (goto-char (car pos-and-point))
