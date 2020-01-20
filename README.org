@@ -7,7 +7,7 @@
 This package provides a cute cat that grows up when you do something positive, and vice
 versa.
 
-Here is a [[img:screen-shot.png][screen shot]] of the package in action.
+Here is a [[screen-shot.png][screen shot]] of the package in action.
 
  + One can define arbitraty activities to calculate positive or negative points.
    + Each activity consists of
