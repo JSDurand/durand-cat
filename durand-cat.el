@@ -972,8 +972,7 @@ not recommended to set unless you know what you are doing."
                         '((
                            :tag "running"
                            :file ("aujourdhui.org"
-                                  "aujourdhui.org_archive"
-                                  "agenda.org")
+                                  "aujourdhui.org_archive")
                            :regex "run")
                           (
                            :tag "clean the house"
